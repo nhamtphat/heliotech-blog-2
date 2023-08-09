@@ -1,0 +1,92 @@
+import { ArticleLayout } from '@/components/ArticleLayout'
+import Image from "next/image";
+import softDelete from './1.png'
+
+export const meta = {
+    author: 'Phat Nham',
+    date: '2021-10-15',
+    title: 'Xoá dữ liệu của quan hệ con khi sử dụng Soft Deletes (cascade delete)',
+    description:
+        'Laravel cung cấp cho bạn một tính năng Soft deletes rất hữu ích, tuy nhiên nó lại đi kèm với nhiều thử thách, một trong số đó là xoá các quan hệ con.',
+}
+
+export default (props) => <ArticleLayout meta={meta} {...props} />
+
+## Vấn đề khi xoá một model khi sử dụng Soft Deletes
+
+Laravel cung cấp cho bạn một tính năng Soft deletes rất hữu ích. Cho bạn nào chưa biết thì Soft Deletes có nghĩa là bạn không thực sự xoá một dòng trong CSDL mà chỉ đánh dấu "đã xoá" bằng cách thêm một cột dữ liệu.
+
+Ví dụ ta có trường hợp mối quan hệ như sau:
+
+<Image src={softDelete} alt="" />
+
+Như vậy khi bạn xoá một Author (tác giả), thì bạn cũng phải xoá tất cả các Post (bài viết) của tác giả đó. Đối với trường hợp xoá trực tiếp trên CSDL thì những dòng có khoá ngoại của author_id của nó cũng tự động xoá theo.
+
+## Xoá dữ liệu của các quan hệ con khi xoá một model
+
+Bạn có thể thực hiện việc này một cách thủ công như sau:
+
+```php {6} showLineNumbers
+class AuthorController extends Controller
+{
+		public function delete($id)
+		{
+				$author = Author::find($id);
+				$author->post()->delete();
+				$author->delete();
+		}
+}
+```
+
+Nhưng nếu bạn có nhiều hơn 1 quan hệ cần xoá, đoạn mã của bạn sẽ bắt đầu dài, chúng ta không nên lập lại một đoạn mã ở nhiều nơi như thế này.
+
+Trong tình huống này, bạn có thể chuyển đoạn code xử lý này vào Model và override method `delete()` của model `Author` như sau:
+
+```php {5} showLineNumbers
+class Author extends Model
+{
+		public function delete()
+    {
+        $this->posts()->delete();
+        parent::delete();
+    }
+}
+```
+
+## Tự động xoá dữ liệu của các quan hệ con
+
+Package [dyrynda/laravel-cascade-soft-deletes](https://github.com/michaeldyrynda/laravel-cascade-soft-deletes) cung cấp cho bạn một cách dễ dàng hơn bằng cách chỉ cần thêm trait `CascadeSoftDeletes` vào Model và khai báo biến `$cascadeDeletes` là mảng các quan hệ mà bạn muốn xoá cùng với nó.
+
+Cài đặt **dyrynda/laravel-cascade-soft-deletes**
+
+```bash
+$ composer require dyrynda/laravel-cascade-soft-deletes
+```
+
+Thêm vào model `Author` của bạn:
+
+```php {12,14} showLineNumbers
+<?php
+
+namespace App\Models;
+
+use App\Models\Post;
+use Dyrynda\Database\Support\CascadeSoftDeletes;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Author extends Model
+{
+    use SoftDeletes, CascadeSoftDeletes;
+
+    protected $cascadeDeletes = ['posts'];
+
+    public function posts()
+    {
+        return $this->hasMany(Post::class);
+    }
+}
+```
+
+Đơn giản hơn rất nhiều đúng không 😃
+
